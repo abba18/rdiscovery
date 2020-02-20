@@ -2,14 +2,10 @@ package consul
 
 import (
 	"fmt"
-	"log"
 	"net"
-	"os"
-	"sync"
 
 	"github.com/abba18/rdiscovery"
 	consulapi "github.com/hashicorp/consul/api"
-	"github.com/hashicorp/consul/api/watch"
 )
 
 type ConsulRdicovery struct {
@@ -19,31 +15,30 @@ type ConsulRdicovery struct {
 	config  *consulapi.Config
 
 	// discovery side part
-	EnableCache  bool
-	cache        rdiscovery.Cache
-	watchService map[string]struct{}
-	watchLock    sync.Mutex
+	EnableCache bool
+	cache       rdiscovery.Cache
+	watcher     *Watcher
 }
 
 func NewConsulRdiscovery(address []string, cfg *consulapi.Config, c rdiscovery.Cache) (rdiscovery.Register, error) {
 	reg := &ConsulRdicovery{
-		Address:      address,
-		EnableCache:  false,
-		config:       cfg,
-		watchService: make(map[string]struct{}),
+		Address:     address,
+		EnableCache: false,
+		config:      cfg,
 	}
 	if c != nil {
 		reg.cache = rdiscovery.NewRCache()
 		reg.EnableCache = true
 	}
-	if _, err := reg.Client(); err != nil {
+	client, err := reg.Client()
+	if err != nil {
 		return nil, err
 	}
-	go func() {
-		if err := reg.WatchAllService(); err != nil {
-			panic(err)
-		}
-	}()
+
+	if reg.EnableCache {
+		reg.watcher = NewWatcher(client, reg.cache)
+	}
+
 	return reg, nil
 }
 
@@ -108,94 +103,15 @@ func (c *ConsulRdicovery) GetService(serviceName string) ([]*rdiscovery.ServiceN
 	if c.EnableCache {
 		// watch serivice
 		go func(serviceName string) {
-			if err := c.Watch(serviceName); err != nil {
-				// FIXME: add retry handle
-			}
+			c.watcher.Watch(serviceName)
 		}(serviceName)
 	}
 
 	return nodes, nil
 }
 
-func (c *ConsulRdicovery) Watch(serviceName string) error {
-	c.watchLock.Lock()
-	if _, ok := c.watchService[serviceName]; ok {
-		c.watchService[serviceName] = struct{}{}
-		// already watch
-		return nil
-	}
-	c.watchService[serviceName] = struct{}{}
-	c.watchLock.Unlock()
+func (c *ConsulRdicovery) Close() {
 
-	client, err := c.Client()
-	if err != nil {
-		return err
-	}
-	wp, err := watch.Parse(map[string]interface{}{
-		"type":    "service",
-		"service": serviceName,
-	})
-	if err != nil {
-		return err
-	}
-	wp.Handler = c.watchServiceHandler
-	return wp.RunWithClientAndLogger(client, log.New(os.Stderr, "", log.LstdFlags))
-}
-
-func (c *ConsulRdicovery) watchServiceHandler(index uint64, res interface{}) {
-	services, ok := res.([]*consulapi.ServiceEntry)
-	if !ok {
-		return
-	}
-	if len(services) <= 0 {
-		return
-	}
-	serviceName := ""
-	nodes := []*rdiscovery.ServiceNode{}
-	for _, service := range services {
-		serviceName = service.Service.Service
-		if service.Checks.AggregatedStatus() == consulapi.HealthPassing {
-			node := &rdiscovery.ServiceNode{
-				Name:    service.Service.Service,
-				ID:      service.Service.ID,
-				Address: service.Service.Address,
-				Port:    service.Service.Port,
-			}
-			nodes = append(nodes, node)
-		}
-	}
-	c.cache.Set(serviceName, nodes)
-}
-
-func (c *ConsulRdicovery) watchAllServiceHandler(index uint64, res interface{}) {
-	services, ok := res.(map[string][]string)
-	if !ok {
-		return
-	}
-	c.watchLock.Lock()
-	for serviceName := range c.watchService {
-		if _, ok := services[serviceName]; !ok {
-			// remove unhealth service
-			c.cache.Del(serviceName)
-		}
-	}
-	c.watchLock.Unlock()
-}
-
-func (c *ConsulRdicovery) WatchAllService() error {
-	client, err := c.Client()
-	if err != nil {
-		return nil
-	}
-	wp, err := watch.Parse(map[string]interface{}{
-		"type": "services",
-	})
-	if err != nil {
-		return err
-	}
-	// wp.HybridHandler = c.watchServiceHybridHandler
-	wp.Handler = c.watchAllServiceHandler
-	return wp.RunWithClientAndLogger(client, log.New(os.Stderr, "", log.LstdFlags))
 }
 
 func (c *ConsulRdicovery) Client() (*consulapi.Client, error) {

@@ -6,6 +6,7 @@ type Register interface {
 	Register(Node *ServiceNode, opt *Options) error
 	Deregister(Node *ServiceNode) error
 	GetService(service string) ([]*ServiceNode, error)
+	Close()
 }
 
 type Cache interface {
