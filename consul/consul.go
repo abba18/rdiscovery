@@ -19,6 +19,7 @@ type ConsulRdicovery struct {
 	config  *consulapi.Config
 
 	// discovery side part
+	EnableCache  bool
 	cache        rdiscovery.Cache
 	watchService map[string]struct{}
 	watchLock    sync.Mutex
@@ -27,11 +28,13 @@ type ConsulRdicovery struct {
 func NewConsulRdiscovery(address []string, cfg *consulapi.Config, c rdiscovery.Cache) (rdiscovery.Register, error) {
 	reg := &ConsulRdicovery{
 		Address:      address,
+		EnableCache:  false,
 		config:       cfg,
 		watchService: make(map[string]struct{}),
 	}
-	if c == nil {
+	if c != nil {
 		reg.cache = rdiscovery.NewRCache()
+		reg.EnableCache = true
 	}
 	if _, err := reg.Client(); err != nil {
 		return nil, err
@@ -78,9 +81,12 @@ func (c *ConsulRdicovery) GetService(serviceName string) ([]*rdiscovery.ServiceN
 	if err != nil {
 		return nil, err
 	}
+
 	// cache first
-	if nodes, ok := c.cache.Get(serviceName); ok {
-		return nodes, nil
+	if c.EnableCache {
+		if nodes, ok := c.cache.Get(serviceName); ok {
+			return nodes, nil
+		}
 	}
 
 	services, _, err := client.Health().Service(serviceName, "", true, nil)
@@ -99,12 +105,14 @@ func (c *ConsulRdicovery) GetService(serviceName string) ([]*rdiscovery.ServiceN
 
 	}
 
-	// watch serivice
-	go func(serviceName string) {
-		if err := c.Watch(serviceName); err != nil {
-			// FIXME: add retry handle
-		}
-	}(serviceName)
+	if c.EnableCache {
+		// watch serivice
+		go func(serviceName string) {
+			if err := c.Watch(serviceName); err != nil {
+				// FIXME: add retry handle
+			}
+		}(serviceName)
+	}
 
 	return nodes, nil
 }

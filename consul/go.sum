@@ -1,3 +1,5 @@
+github.com/abba18/rdiscovery v0.0.0-20200215112251-1e9f6311f78c h1:6rH5uyjMfO67E0pr53e/Gbs3i7vvmAGYZVF2qZVDHcY=
+github.com/abba18/rdiscovery v0.0.0-20200215112251-1e9f6311f78c/go.mod h1:p5Guau5LmWxtBWytdLevnJDniJ2M07MbYxOuX4gs3kY=
 github.com/armon/circbuf v0.0.0-20150827004946-bbbad097214e/go.mod h1:3U/XgcO3hCbHZ8TKRvWD2dDTCfh9M9ya+I9JpbB7O8o=
 github.com/armon/go-metrics v0.0.0-20180917152333-f0300d1749da h1:8GUt8eRujhVEGZFFEjBj46YV4rDjvGrNxb0KMWYkL2I=
 github.com/armon/go-metrics v0.0.0-20180917152333-f0300d1749da/go.mod h1:Q73ZrmVTwzkszR9V5SSuryQ31EELlFMUz1kKyl939pY=
