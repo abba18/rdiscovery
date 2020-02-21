@@ -1,8 +1,8 @@
 package consul
 
 import (
-	"fmt"
 	"net"
+	"sync"
 
 	"github.com/abba18/rdiscovery"
 	consulapi "github.com/hashicorp/consul/api"
@@ -10,21 +10,28 @@ import (
 
 type ConsulRdicovery struct {
 	// common part
-	Address []string
+	Address string
 	client  *consulapi.Client
 	config  *consulapi.Config
+	closed  bool
 
 	// discovery side part
 	EnableCache bool
 	cache       rdiscovery.Cache
 	watcher     *Watcher
+
+	// register side part
+	register     map[string]*rdiscovery.ServiceNode
+	registerLock sync.Mutex
 }
 
-func NewConsulRdiscovery(address []string, cfg *consulapi.Config, c rdiscovery.Cache) (rdiscovery.Register, error) {
+func NewConsulRdiscovery(address string, cfg *consulapi.Config, c rdiscovery.Cache) (rdiscovery.Register, error) {
 	reg := &ConsulRdicovery{
 		Address:     address,
+		closed:      false,
 		EnableCache: false,
 		config:      cfg,
+		register:    make(map[string]*rdiscovery.ServiceNode),
 	}
 	if c != nil {
 		reg.cache = rdiscovery.NewRCache()
@@ -57,9 +64,18 @@ func (c *ConsulRdicovery) Register(Node *rdiscovery.ServiceNode, opt *rdiscovery
 		Port:    Node.Port,
 		Check:   check,
 	}
+	c.registerLock.Lock()
+	defer c.registerLock.Unlock()
+	if c.closed {
+		return rdiscovery.ErrClose
+	}
+	if _, ok := c.register[Node.Name]; ok {
+		return rdiscovery.ErrAlreadyRegitered
+	}
 	if err := client.Agent().ServiceRegister(asr); err != nil {
 		return err
 	}
+	c.register[Node.Name] = Node
 	return nil
 }
 func (c *ConsulRdicovery) Deregister(Node *rdiscovery.ServiceNode) error {
@@ -67,7 +83,11 @@ func (c *ConsulRdicovery) Deregister(Node *rdiscovery.ServiceNode) error {
 	if err != nil {
 		return err
 	}
-	client.Agent().ServiceDeregister(Node.ID)
+	c.registerLock.Lock()
+	defer c.registerLock.Unlock()
+	if _, ok := c.register[Node.Name]; ok {
+		client.Agent().ServiceDeregister(Node.ID)
+	}
 	return nil
 }
 
@@ -111,36 +131,41 @@ func (c *ConsulRdicovery) GetService(serviceName string) ([]*rdiscovery.ServiceN
 }
 
 func (c *ConsulRdicovery) Close() {
+	c.closed = true
+	if c.EnableCache {
+		c.watcher.Stop()
+	}
 
+	dereg := map[string]*rdiscovery.ServiceNode{}
+	c.registerLock.Lock()
+	for k, v := range c.register {
+		// can not call c.Deregister here,will be dead lock!
+		dereg[k] = v
+	}
+	c.registerLock.Unlock()
+	for _, node := range dereg {
+		c.Deregister(node)
+	}
 }
 
 func (c *ConsulRdicovery) Client() (*consulapi.Client, error) {
 	if c.client != nil {
 		return c.client, nil
 	}
-	var e error
 	config := &consulapi.Config{}
 	if c.config != nil {
 		config = c.config
 	}
-	for _, addr := range c.Address {
-		config.Address = addr
-		client, err := consulapi.NewClient(config)
-		if err != nil {
-			e = err
-			continue
-		}
-		if _, err := client.Agent().Host(); err != nil {
-			e = err
-			continue
-		}
-		c.client = client
-		break
+	config.Address = c.Address
+	client, err := consulapi.NewClient(config)
+	if err != nil {
+		return nil, err
 	}
-	if c.client == nil {
-		return nil, fmt.Errorf("no usable address:%s", e)
+	if _, err := client.Agent().Host(); err != nil {
+		return nil, err
 	}
-	return c.client, e
+	c.client = client
+	return c.client, nil
 }
 
 func getAgentServiceCheckByOpt(opt *rdiscovery.Options) *consulapi.AgentServiceCheck {

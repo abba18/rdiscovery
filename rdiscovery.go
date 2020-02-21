@@ -1,6 +1,14 @@
 package rdiscovery
 
-import "time"
+import (
+	"errors"
+	"time"
+)
+
+const (
+	ErrAlreadyRegitered = errors.New("same service name is already registered")
+	ErrClose            = errors.New("register is close")
+)
 
 type Register interface {
 	Register(Node *ServiceNode, opt *Options) error
