@@ -49,7 +49,7 @@ func NewConsulRdiscovery(address string, cfg *consulapi.Config, c rdiscovery.Cac
 	return reg, nil
 }
 
-func (c *ConsulRdicovery) Register(Node *rdiscovery.ServiceNode, opt *rdiscovery.Options) error {
+func (c *ConsulRdicovery) Register(node *rdiscovery.ServiceNode, opt *rdiscovery.Options) error {
 	client, err := c.Client()
 	if err != nil {
 		return err
@@ -58,10 +58,10 @@ func (c *ConsulRdicovery) Register(Node *rdiscovery.ServiceNode, opt *rdiscovery
 	check := getAgentServiceCheckByOpt(opt)
 
 	asr := &consulapi.AgentServiceRegistration{
-		ID:      Node.ID,
-		Name:    Node.Name,
-		Address: Node.Address,
-		Port:    Node.Port,
+		ID:      node.ID,
+		Name:    node.Name,
+		Address: node.Address,
+		Port:    node.Port,
 		Check:   check,
 	}
 	c.registerLock.Lock()
@@ -69,24 +69,24 @@ func (c *ConsulRdicovery) Register(Node *rdiscovery.ServiceNode, opt *rdiscovery
 	if c.closed {
 		return rdiscovery.ErrClose
 	}
-	if _, ok := c.register[Node.Name]; ok {
+	if _, ok := c.register[node.Name]; ok {
 		return rdiscovery.ErrAlreadyRegitered
 	}
 	if err := client.Agent().ServiceRegister(asr); err != nil {
 		return err
 	}
-	c.register[Node.Name] = Node
+	c.register[node.Name] = node
 	return nil
 }
-func (c *ConsulRdicovery) Deregister(Node *rdiscovery.ServiceNode) error {
+func (c *ConsulRdicovery) Deregister(node *rdiscovery.ServiceNode) error {
 	client, err := c.Client()
 	if err != nil {
 		return err
 	}
 	c.registerLock.Lock()
 	defer c.registerLock.Unlock()
-	if _, ok := c.register[Node.Name]; ok {
-		client.Agent().ServiceDeregister(Node.ID)
+	if _, ok := c.register[node.Name]; ok {
+		client.Agent().ServiceDeregister(node.ID)
 	}
 	return nil
 }

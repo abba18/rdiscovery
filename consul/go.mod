@@ -1,4 +1,4 @@
-module github.com/abba18/rdiscovery-plugin/consul
+module github.com/abba18/rdiscovery/consul
 
 go 1.13
 
