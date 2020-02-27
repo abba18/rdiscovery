@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-const (
+var (
 	ErrAlreadyRegitered = errors.New("same service name is already registered")
 	ErrClose            = errors.New("register is close")
 )

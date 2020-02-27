@@ -69,7 +69,7 @@ func (e *EtcdRdicovery) Register(node *rdiscovery.ServiceNode, opt *rdiscovery.O
 		return rdiscovery.ErrAlreadyRegitered
 	}
 
-	if opt.CheckInterval >= 0 {
+	if (opt != nil) && (opt.CheckInterval > 0) {
 		ctx := context.TODO()
 		ttl := int64(opt.CheckInterval.Seconds())
 		grantResp, err := client.Grant(ctx, ttl)
@@ -90,9 +90,9 @@ func (e *EtcdRdicovery) Register(node *rdiscovery.ServiceNode, opt *rdiscovery.O
 		go e.keepalive(grantResp.ID, stop)
 	} else {
 		ctx := context.TODO()
-		_, err = client.Put(ctx, newNodeKey(e.prefix, node.Name, node.ID), encode(node))
+		_, err := client.Put(ctx, newNodeKey(e.prefix, node.Name, node.ID), encode(node))
 		if err != nil {
-			return nil
+			return err
 		}
 	}
 	e.register[node.Name] = node
@@ -139,6 +139,7 @@ func (e *EtcdRdicovery) GetService(serviceName string) ([]*rdiscovery.ServiceNod
 	return nodes, nil
 }
 func (e *EtcdRdicovery) Close() {
+	e.client.Close()
 	e.closed = false
 	close(e.close)
 
