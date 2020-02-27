@@ -99,9 +99,14 @@ func (e *EtcdRdicovery) Register(node *rdiscovery.ServiceNode, opt *rdiscovery.O
 	return nil
 }
 func (e *EtcdRdicovery) Deregister(node *rdiscovery.ServiceNode) error {
+	client, err := e.Client()
+	if err != nil {
+		return err
+	}
 	e.registerLock.Lock()
 	defer e.registerLock.Unlock()
 	delete(e.register, node.Name)
+	client.Delete(context.TODO(), newNodeKey(e.prefix, node.Name, node.ID))
 	e.keepaliveLock.Lock()
 	if c, ok := e.keepalivePool[node.Name]; ok {
 		close(c)
@@ -139,7 +144,6 @@ func (e *EtcdRdicovery) GetService(serviceName string) ([]*rdiscovery.ServiceNod
 	return nodes, nil
 }
 func (e *EtcdRdicovery) Close() {
-	e.client.Close()
 	e.closed = false
 	close(e.close)
 
@@ -152,6 +156,7 @@ func (e *EtcdRdicovery) Close() {
 	for _, v := range del {
 		e.Deregister(v)
 	}
+	e.client.Close()
 }
 
 func (e *EtcdRdicovery) Client() (*clientv3.Client, error) {
