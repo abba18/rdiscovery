@@ -24,6 +24,7 @@ func NewWatcher(client *clientv3.Client, cache rdiscovery.Cache) *Watcher {
 		stop:         false,
 		events:       make(chan []*clientv3.Event, 100),
 		close:        make(chan struct{}),
+		client:       client,
 	}
 	go w.handler()
 	return w
